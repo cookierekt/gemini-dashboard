@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gemini Global Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="init.js"></script>
+</head>
+<body>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    
+    <!-- Auth Modal -->
+    <div id="authModal" class="modal" style="display: block;">
+        <div class="modal-content" style="max-width: 400px; margin: 10% auto;">
+            <div class="modal-header">
+                <h2 id="authTitle">Welcome to Gemini Global</h2>
+            </div>
+            <div class="auth-container">
+                <div class="auth-tabs">
+                    <button class="auth-tab active" onclick="switchAuthTab('signin')">Sign In</button>
+                    <button class="auth-tab" onclick="switchAuthTab('signup')">Sign Up</button>
+                </div>
+                
+                <form id="authForm" class="auth-form">
+                    <div class="form-group">
+                        <label for="authEmail">Email</label>
+                        <input type="email" id="authEmail" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="authPassword">Password</label>
+                        <input type="password" id="authPassword" required>
+                    </div>
+                    <div class="form-group" id="nameGroup" style="display: none;">
+                        <label for="authName">Full Name</label>
+                        <input type="text" id="authName">
+                    </div>
+                    <div class="form-group" id="orgGroup" style="display: none;">
+                        <label for="authOrg">Organization Name</label>
+                        <input type="text" id="authOrg" placeholder="e.g., Gemini Global Inc.">
+                    </div>
+                    <button type="submit" class="btn-primary" id="authSubmit">Sign In</button>
+                </form>
+                
+                <div class="auth-divider">or</div>
+                
+                <button class="btn-google" onclick="signInWithGoogle()">
+                    <i class="fab fa-google"></i> Continue with Google
+                </button>
+                
+                <div class="auth-footer">
+                    <p id="authSwitchText">Don't have an account? <a href="#" onclick="switchAuthTab('signup')">Sign up</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+        <i class="fas fa-moon" id="themeIcon"></i>
+    </button>
+    
+    <!-- User Profile Dropdown -->
+    <div class="user-profile" id="userProfile" style="display: none;">
+        <img id="userAvatar" class="user-avatar" alt="User Avatar">
+        <span id="userName">Loading...</span>
+        <div class="user-dropdown">
+            <a href="#" onclick="showInviteModal()"><i class="fas fa-user-plus"></i> Invite Partner</a>
+            <a href="#" onclick="showSettingsModal()"><i class="fas fa-cog"></i> Settings</a>
+            <a href="#" onclick="signOut()"><i class="fas fa-sign-out-alt"></i> Sign Out</a>
+        </div>
+    </div>
+    
+    <div class="dashboard" id="mainDashboard" style="display: none;">
+        <header class="header">
+            <div class="header-content">
+                <h1><i class="fas fa-industry"></i> Gemini Global Dashboard</h1>
+                <div class="header-stats">
+                    <div class="stat-card">
+                        <span class="stat-number" id="totalContacts">0</span>
+                        <span class="stat-label">Total Contacts</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number" id="activeLeads">0</span>
+                        <span class="stat-label">Active Leads</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-number" id="upcomingFollowUps">0</span>
+                        <span class="stat-label">Follow-ups Due</span>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main class="main-content" id="main-content">
+            <div class="controls">
+                <div class="view-controls">
+                    <div class="layout-toggle">
+                        <button class="layout-btn active" id="cardViewBtn" onclick="setView('card')">
+                            <i class="fas fa-th-large"></i>
+                        </button>
+                        <button class="layout-btn" id="listViewBtn" onclick="setView('list')">
+                            <i class="fas fa-list"></i>
+                        </button>
+                    </div>
+                    <div class="density-controls">
+                        <button class="density-btn" id="compactBtn" onclick="setDensity('compact')" title="Compact">
+                            <i class="fas fa-compress-alt"></i>
+                        </button>
+                        <button class="density-btn active" id="comfortableBtn" onclick="setDensity('comfortable')" title="Comfortable">
+                            <i class="fas fa-expand-alt"></i>
+                        </button>
+                        <button class="density-btn" id="spaciousBtn" onclick="setDensity('spacious')" title="Spacious">
+                            <i class="fas fa-expand-arrows-alt"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="search-filter">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Search contacts, companies, locations...">
+                        <div class="search-suggestions" id="searchSuggestions"></div>
+                    </div>
+                    <div class="active-filters" id="activeFilters"></div>
+                    <div class="filter-dropdown">
+                        <select id="locationFilter">
+                            <option value="">All Locations</option>
+                            <option value="BC">BC</option>
+                            <option value="ON">ON</option>
+                            <option value="QC">QC</option>
+                            <option value="MB">MB</option>
+                            <option value="USA">USA</option>
+                        </select>
+                    </div>
+                    <div class="filter-dropdown">
+                        <select id="statusFilter">
+                            <option value="">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="pending">Pending Response</option>
+                            <option value="follow-up">Follow-up Needed</option>
+                            <option value="inactive">Inactive</option>
+                        </select>
+                    </div>
+                    <div class="quick-filters">
+                        <button class="quick-filter-btn" onclick="quickFilter('follow-up')">Follow-ups Due</button>
+                        <button class="quick-filter-btn" onclick="quickFilter('recent')">Recent Contacts</button>
+                        <button class="quick-filter-btn" onclick="quickFilter('inactive')">Inactive</button>
+                    </div>
+                </div>
+                
+                <div class="action-buttons">
+                    <button class="btn-sync" onclick="syncData()" id="syncBtn" title="Sync with cloud">
+                        <i class="fas fa-sync-alt" id="syncIcon"></i> Sync
+                    </button>
+                    <button class="btn-primary" onclick="openAddContactModal()">
+                        <i class="fas fa-plus"></i> Add Contact
+                    </button>
+                </div>
+            </div>
+
+            <div class="contacts-container">
+                <div class="contacts-grid" id="contactsGrid">
+                    <!-- Contact cards will be dynamically generated here -->
+                </div>
+                <div class="contacts-list" id="contactsList" style="display: none;">
+                    <!-- List view will be dynamically generated here -->
+                </div>
+                <div class="loading-skeleton" id="loadingSkeleton" style="display: none;">
+                    <!-- Loading skeletons -->
+                </div>
+                <div class="empty-state" id="emptyState" style="display: none;">
+                    <div class="empty-icon">
+                        <i class="fas fa-search"></i>
+                    </div>
+                    <h3>No contacts found</h3>
+                    <p>Try adjusting your search or filters</p>
+                    <button class="btn-primary" onclick="clearAllFilters()">
+                        <i class="fas fa-times"></i> Clear Filters
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Add/Edit Contact Modal -->
+    <div id="contactModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Add New Contact</h2>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <form id="contactForm">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="plantName">Plant/Company Name</label>
+                        <input type="text" id="plantName" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <input type="text" id="location" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="contactName">Contact Person</label>
+                        <input type="text" id="contactName">
+                    </div>
+                    <div class="form-group">
+                        <label for="phoneNumber">Phone Number</label>
+                        <input type="text" id="phoneNumber">
+                    </div>
+                    <div class="form-group">
+                        <label for="firstContact">First Contact</label>
+                        <input type="date" id="firstContact">
+                    </div>
+                    <div class="form-group">
+                        <label for="recentContact">Recent Contact</label>
+                        <input type="date" id="recentContact">
+                    </div>
+                    <div class="form-group">
+                        <label for="nextContact">Next Contact</label>
+                        <input type="date" id="nextContact">
+                    </div>
+                    <div class="form-group">
+                        <label for="frequency">Contact Frequency</label>
+                        <select id="frequency">
+                            <option value="">Select frequency</option>
+                            <option value="1 week">1 week</option>
+                            <option value="2 weeks">2 weeks</option>
+                            <option value="1 month">1 month</option>
+                            <option value="2-3 months">2-3 months</option>
+                            <option value="6 months">6 months</option>
+                            <option value="yearly">Yearly</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="callTime">Best Call Time (PDT)</label>
+                        <input type="time" id="callTime">
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="notes">Notes</label>
+                        <textarea id="notes" rows="3"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn-primary">Save Contact</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="keyboard-shortcuts" id="keyboardShortcuts">
+        <div class="shortcut-item">
+            <span>Search</span>
+            <span class="shortcut-key">Ctrl+K</span>
+        </div>
+        <div class="shortcut-item">
+            <span>New Contact</span>
+            <span class="shortcut-key">Ctrl+N</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Sync Data</span>
+            <span class="shortcut-key">Ctrl+R</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Card View</span>
+            <span class="shortcut-key">1</span>
+        </div>
+        <div class="shortcut-item">
+            <span>List View</span>
+            <span class="shortcut-key">2</span>
+        </div>
+    </div>
+    
+    <!-- Invite Modal -->
+    <div id="inviteModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2>Invite Business Partner</h2>
+                <span class="close" onclick="closeInviteModal()">&times;</span>
+            </div>
+            <div class="invite-container">
+                <div class="form-group">
+                    <label for="inviteEmail">Partner's Email</label>
+                    <input type="email" id="inviteEmail" placeholder="partner@example.com">
+                </div>
+                <div class="form-group">
+                    <label for="inviteRole">Role</label>
+                    <select id="inviteRole">
+                        <option value="member">Member (Can add/edit contacts)</option>
+                        <option value="admin">Admin (Full access)</option>
+                        <option value="viewer">Viewer (Read only)</option>
+                    </select>
+                </div>
+                <div class="invite-link-section">
+                    <label>Or share this link:</label>
+                    <div class="invite-link">
+                        <input type="text" id="inviteLink" readonly>
+                        <button class="btn-secondary" onclick="copyInviteLink()">
+                            <i class="fas fa-copy"></i> Copy
+                        </button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" onclick="closeInviteModal()">Cancel</button>
+                    <button class="btn-primary" onclick="sendInvite()">Send Invite</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Settings</h2>
+                <span class="close" onclick="closeSettingsModal()">&times;</span>
+            </div>
+            <div class="settings-container">
+                <div class="settings-section">
+                    <h3>Organization</h3>
+                    <div class="form-group">
+                        <label for="orgName">Organization Name</label>
+                        <input type="text" id="orgName">
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Team Members</h3>
+                    <div id="teamMembersList"></div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Data Export</h3>
+                    <div class="export-buttons">
+                        <button class="btn-secondary" onclick="exportData('csv')">
+                            <i class="fas fa-file-csv"></i> Export CSV
+                        </button>
+                        <button class="btn-secondary" onclick="exportData('json')">
+                            <i class="fas fa-file-code"></i> Export JSON
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="settings-section">
+                    <h3>Activity Log</h3>
+                    <div id="activityLog"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="toast-container" id="toastContainer"></div>
+    
+    <!-- Connection Status -->
+    <div class="connection-status" id="connectionStatus">
+        <i class="fas fa-wifi"></i> <span>Online</span>
+    </div>
+    
+    <script src="supabase-config.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
