@@ -6,11 +6,15 @@ let currentView = 'card';
 let currentDensity = 'comfortable';
 let activeFilters = [];
 let searchHistory = [];
-let currentTheme = 'dark';
+let currentTheme = 'light'; // Default to light mode
 let touchStartX = 0;
 let touchStartY = 0;
 let lastSyncTime = null;
 let autoSyncInterval = null;
+
+// Bulk operations
+let bulkMode = false;
+let selectedContacts = new Set();
 
 // Auth variables are accessed via window.currentUser and window.currentOrganization
 // These are set by supabase-config.js
@@ -214,6 +218,8 @@ async function saveContactToSupabase(contactData, isUpdate = false, contactId = 
             call_time: contactData.callTime,
             notes: contactData.notes,
             status: contactData.status || 'inactive',
+            organization_id: window.currentOrganization.id,
+            updated_by: window.currentUser.id
         };
         
         if (isUpdate && contactId) {
@@ -691,18 +697,91 @@ function showLoadingSkeleton() {
     list.style.display = 'none';
     skeleton.style.display = 'grid';
     
-    skeleton.innerHTML = Array(6).fill(0).map(() => `
-        <div class="skeleton-card">
-            <div class="skeleton-line short"></div>
-            <div class="skeleton-line medium"></div>
-            <div class="skeleton-line long"></div>
-            <div class="skeleton-line medium"></div>
-        </div>
-    `).join('');
+    // Generate skeleton based on current view
+    if (currentView === 'list') {
+        skeleton.className = 'loading-skeleton list-view';
+        skeleton.innerHTML = Array(8).fill(0).map(() => `
+            <div class="skeleton-card list-item">
+                <div class="skeleton-circle"></div>
+                <div style="flex: 1;">
+                    <div class="skeleton-line short" style="margin-bottom: 0.5rem;"></div>
+                    <div class="skeleton-line medium" style="margin-bottom: 0;"></div>
+                </div>
+            </div>
+        `).join('');
+    } else {
+        skeleton.className = 'loading-skeleton';
+        skeleton.innerHTML = Array(6).fill(0).map((_, index) => `
+            <div class="skeleton-card" style="animation-delay: ${index * 0.1}s;">
+                <div class="skeleton-line short"></div>
+                <div class="skeleton-line medium"></div>
+                <div class="skeleton-line long"></div>
+                <div class="skeleton-line medium"></div>
+                <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                    <div class="skeleton-line" style="width: 80px; height: 30px; margin-bottom: 0;"></div>
+                    <div class="skeleton-line" style="width: 60px; height: 30px; margin-bottom: 0;"></div>
+                </div>
+            </div>
+        `).join('');
+    }
 }
 
 function hideLoadingSkeleton() {
     document.getElementById('loadingSkeleton').style.display = 'none';
+}
+
+// Button loading states
+function showButtonLoading(button, originalText) {
+    if (typeof button === 'string') {
+        button = document.getElementById(button);
+    }
+    if (!button) return;
+    
+    button.classList.add('btn-loading');
+    button.disabled = true;
+    
+    // Store original text and wrap it
+    if (!button.querySelector('.btn-text')) {
+        button.innerHTML = `<span class="btn-text">${originalText || button.textContent}</span>`;
+    }
+}
+
+function hideButtonLoading(button, originalText) {
+    if (typeof button === 'string') {
+        button = document.getElementById(button);
+    }
+    if (!button) return;
+    
+    button.classList.remove('btn-loading');
+    button.disabled = false;
+    
+    if (originalText) {
+        button.innerHTML = originalText;
+    } else {
+        const textSpan = button.querySelector('.btn-text');
+        if (textSpan) {
+            button.innerHTML = textSpan.textContent;
+        }
+    }
+}
+
+// Form loading overlay
+function showFormLoading(formElement) {
+    if (typeof formElement === 'string') {
+        formElement = document.getElementById(formElement);
+    }
+    if (formElement) {
+        formElement.classList.add('form-loading');
+    }
+}
+
+function hideFormLoading(formElement) {
+    if (typeof formElement === 'string') {
+        formElement = document.getElementById(formElement);
+    }
+    if (formElement) {
+        formElement.classList.remove('form-loading');
+    }
 }
 
 function showEmptyState() {
@@ -718,7 +797,18 @@ function hideEmptyState() {
 function createContactCard(contact) {
     const card = document.createElement('div');
     card.className = 'contact-card';
-    card.onclick = () => editContact(contact.id);
+    card.dataset.contactId = contact.id;
+    
+    // Set up click handler based on mode
+    if (bulkMode) {
+        card.classList.add('bulk-mode');
+        card.onclick = handleContactSelection;
+        if (selectedContacts.has(contact.id.toString())) {
+            card.classList.add('selected');
+        }
+    } else {
+        card.onclick = () => editContact(contact.id);
+    }
 
     const statusClass = `status-${contact.status || 'inactive'}`;
     const priorityClass = getPriorityClass(contact);
@@ -1106,8 +1196,10 @@ async function handleFormSubmit(event) {
     }
     
     const submitBtn = event.target.querySelector('[type="submit"]');
-    submitBtn.classList.add('btn-loading');
-    submitBtn.disabled = true;
+    const form = event.target;
+    
+    showButtonLoading(submitBtn);
+    showFormLoading(form);
     
     try {
         const formData = {
@@ -1207,10 +1299,23 @@ async function handleFormSubmit(event) {
         
     } catch (error) {
         console.error('Form submit error:', error);
-        showToast('Error saving contact: ' + error.message, 'error');
+        
+        // More specific error messages
+        let errorMessage = 'Error saving contact';
+        if (error.message.includes('organization')) {
+            errorMessage = 'Organization error. Please try signing out and signing back in.';
+        } else if (error.message.includes('JWT') || error.message.includes('auth')) {
+            errorMessage = 'Authentication error. Please sign in again.';
+        } else if (error.message.includes('duplicate') || error.message.includes('unique')) {
+            errorMessage = 'A contact with this information already exists.';
+        } else if (error.message) {
+            errorMessage += ': ' + error.message;
+        }
+        
+        showToast(errorMessage, 'error', 5000);
     } finally {
-        submitBtn.classList.remove('btn-loading');
-        submitBtn.disabled = false;
+        hideButtonLoading(submitBtn, 'Save Contact');
+        hideFormLoading(form);
     }
 }
 
@@ -1261,40 +1366,227 @@ function loadUserPreferences() {
     }
 }
 
+// Global variables for keyboard navigation
+let focusedIndex = -1;
+let focusableElements = [];
+
 function handleKeyboardShortcuts(event) {
-    // Ctrl/Cmd + K to focus search
+    // Don't handle shortcuts when typing in inputs
+    const isTyping = event.target.matches('input, textarea, select, [contenteditable]');
+    
+    // Always handle these regardless of focus
     if ((event.ctrlKey || event.metaKey) && event.key === 'k') {
         event.preventDefault();
         document.getElementById('searchInput').focus();
+        return;
     }
     
-    // Escape to clear search
-    if (event.key === 'Escape') {
-        if (document.getElementById('searchInput').value) {
-            document.getElementById('searchInput').value = '';
-            filterContacts();
-        }
-    }
-    
-    // Ctrl/Cmd + N to add new contact
-    if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
-        event.preventDefault();
-        openAddContactModal();
-    }
-    
-    // 1, 2 for view switching
-    if (event.key === '1' && !event.target.matches('input, textarea')) {
-        setView('card');
-    }
-    if (event.key === '2' && !event.target.matches('input, textarea')) {
-        setView('list');
-    }
-    
-    // Ctrl/Cmd + R for sync (prevent default refresh)
     if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
         event.preventDefault();
         syncData();
+        return;
     }
+    
+    if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+        event.preventDefault();
+        openAddContactModal();
+        return;
+    }
+    
+    // Modal shortcuts
+    if (document.getElementById('contactModal').style.display !== 'none') {
+        if (event.key === 'Escape') {
+            closeModal();
+        }
+        return;
+    }
+    
+    // Bulk mode shortcuts
+    if (bulkMode) {
+        if (event.key === 'Escape') {
+            exitBulkMode();
+            return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key === 'a') {
+            event.preventDefault();
+            selectAll();
+            return;
+        }
+        if (event.key === 'Delete' || event.key === 'Backspace') {
+            event.preventDefault();
+            bulkDelete();
+            return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key === 'e') {
+            event.preventDefault();
+            bulkExport();
+            return;
+        }
+    }
+    
+    // Don't handle other shortcuts when typing
+    if (isTyping) return;
+    
+    // Global navigation shortcuts
+    switch (event.key) {
+        case 'Escape':
+            // Clear search or exit bulk mode
+            if (document.getElementById('searchInput').value) {
+                document.getElementById('searchInput').value = '';
+                filterContacts();
+            } else if (bulkMode) {
+                exitBulkMode();
+            }
+            break;
+            
+        case '1':
+            setView('card');
+            break;
+            
+        case '2':
+            setView('list');
+            break;
+            
+        case '3':
+            setDensity('compact');
+            break;
+            
+        case '4':
+            setDensity('comfortable');
+            break;
+            
+        case '5':
+            setDensity('spacious');
+            break;
+            
+        case 's':
+            if (event.shiftKey) {
+                toggleBulkMode();
+            }
+            break;
+            
+        case 'h':
+            showKeyboardShortcuts();
+            break;
+            
+        case '/':
+            event.preventDefault();
+            document.getElementById('searchInput').focus();
+            break;
+            
+        case 'ArrowDown':
+            event.preventDefault();
+            navigateContacts('down');
+            break;
+            
+        case 'ArrowUp':
+            event.preventDefault();
+            navigateContacts('up');
+            break;
+            
+        case 'ArrowLeft':
+            event.preventDefault();
+            navigateContacts('left');
+            break;
+            
+        case 'ArrowRight':
+            event.preventDefault();
+            navigateContacts('right');
+            break;
+            
+        case 'Enter':
+            if (focusedIndex >= 0 && focusableElements[focusedIndex]) {
+                event.preventDefault();
+                if (bulkMode) {
+                    // Toggle selection in bulk mode
+                    focusableElements[focusedIndex].click();
+                } else {
+                    // Edit contact
+                    const contactId = focusableElements[focusedIndex].dataset.contactId;
+                    if (contactId) editContact(contactId);
+                }
+            }
+            break;
+            
+        case ' ':
+            // Spacebar to select/deselect in bulk mode
+            if (bulkMode && focusedIndex >= 0 && focusableElements[focusedIndex]) {
+                event.preventDefault();
+                focusableElements[focusedIndex].click();
+            }
+            break;
+    }
+}
+
+function navigateContacts(direction) {
+    updateFocusableElements();
+    
+    if (focusableElements.length === 0) return;
+    
+    // Remove previous focus
+    if (focusedIndex >= 0 && focusableElements[focusedIndex]) {
+        focusableElements[focusedIndex].classList.remove('keyboard-focus');
+    }
+    
+    const isGridView = currentView === 'card';
+    const columns = isGridView ? getGridColumns() : 1;
+    
+    switch (direction) {
+        case 'down':
+            if (isGridView) {
+                focusedIndex = Math.min(focusedIndex + columns, focusableElements.length - 1);
+            } else {
+                focusedIndex = Math.min(focusedIndex + 1, focusableElements.length - 1);
+            }
+            break;
+            
+        case 'up':
+            if (isGridView) {
+                focusedIndex = Math.max(focusedIndex - columns, 0);
+            } else {
+                focusedIndex = Math.max(focusedIndex - 1, 0);
+            }
+            break;
+            
+        case 'left':
+            if (isGridView) {
+                focusedIndex = Math.max(focusedIndex - 1, 0);
+            }
+            break;
+            
+        case 'right':
+            if (isGridView) {
+                focusedIndex = Math.min(focusedIndex + 1, focusableElements.length - 1);
+            }
+            break;
+    }
+    
+    // If no element was focused, start with the first one
+    if (focusedIndex < 0 && focusableElements.length > 0) {
+        focusedIndex = 0;
+    }
+    
+    // Apply focus
+    if (focusedIndex >= 0 && focusableElements[focusedIndex]) {
+        const element = focusableElements[focusedIndex];
+        element.classList.add('keyboard-focus');
+        element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+function updateFocusableElements() {
+    focusableElements = Array.from(document.querySelectorAll('.contact-card:not([style*="display: none"])'));
+}
+
+function getGridColumns() {
+    const grid = document.getElementById('contactsGrid');
+    if (!grid) return 1;
+    
+    const gridComputedStyle = window.getComputedStyle(grid);
+    const gridTemplateColumns = gridComputedStyle.gridTemplateColumns;
+    
+    // Count the number of columns
+    return gridTemplateColumns.split(' ').length;
 }
 
 function determineStatus(contact) {
@@ -1337,16 +1629,26 @@ function loadTheme() {
     if (saved) {
         currentTheme = saved;
     } else {
-        // Detect system preference
-        currentTheme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        // Detect system preference (default to light)
+        currentTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
     applyTheme();
 }
 
 function applyTheme() {
-    document.body.className = currentTheme === 'light' ? 'light-theme' : '';
+    document.documentElement.setAttribute('data-theme', currentTheme);
     const icon = document.getElementById('themeIcon');
-    icon.className = currentTheme === 'light' ? 'fas fa-sun' : 'fas fa-moon';
+    if (icon) {
+        icon.className = currentTheme === 'light' ? 'fas fa-sun' : 'fas fa-moon';
+    }
+    
+    // Also update the theme toggle button appearance
+    const themeToggle = document.querySelector('.theme-toggle');
+    if (themeToggle) {
+        themeToggle.setAttribute('aria-label', 
+            currentTheme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'
+        );
+    }
 }
 
 // Touch gesture functions
@@ -1477,7 +1779,10 @@ function validateForm() {
             group.classList.add('has-error');
             const error = document.createElement('div');
             error.className = 'error-message';
-            error.textContent = `${field.labels[0].textContent.replace(' *', '')} is required`;
+            const labelText = field.labels && field.labels[0] ? 
+                field.labels[0].textContent.replace(' *', '') : 
+                field.getAttribute('placeholder') || 'This field';
+            error.textContent = `${labelText} is required`;
             group.appendChild(error);
         } else {
             group.classList.remove('has-error');
@@ -1644,8 +1949,8 @@ function cleanupUnusedData() {
     });
 }
 
-// Run cleanup periodically
-setInterval(cleanupUnusedData, 30000);
+// Run cleanup periodically (every 5 minutes)
+setInterval(cleanupUnusedData, 300000);
 
 // Error handling and logging
 function handleError(error, context = '') {
@@ -1754,24 +2059,34 @@ async function syncData() {
 }
 
 function startAutoSync() {
-    // Auto-sync every 30 seconds if user is logged in
+    // Auto-sync every 2 minutes if user is logged in (reduced frequency)
     autoSyncInterval = setInterval(async () => {
-        if (window.currentUser && window.currentOrganization) {
+        if (window.currentUser && window.currentOrganization && document.visibilityState === 'visible') {
             try {
-                showSyncIndicator('syncing', 'Auto-syncing...', true);
-                await loadContactsFromSupabase();
-                lastSyncTime = new Date();
-                showSyncIndicator('success', 'Auto-sync complete', true);
-                updateLastSyncDisplay();
-                
-                setTimeout(() => hideSyncIndicator(), 2000);
+                // Only sync if user is actively using the app
+                if (document.hasFocus && document.hasFocus()) {
+                    showSyncIndicator('syncing', 'Auto-syncing...', true);
+                    await loadContactsFromSupabase();
+                    lastSyncTime = new Date();
+                    showSyncIndicator('success', 'Auto-sync complete', true);
+                    updateLastSyncDisplay();
+                    
+                    setTimeout(() => hideSyncIndicator(), 2000);
+                }
             } catch (error) {
                 console.error('Auto-sync error:', error);
-                showSyncIndicator('error', 'Auto-sync failed', true);
-                setTimeout(() => hideSyncIndicator(), 3000);
+                // Don't show error indicator for auto-sync failures to avoid annoying users
+                setTimeout(() => hideSyncIndicator(), 1000);
+                
+                // If it's an auth error, stop auto-sync to prevent further issues
+                if (error.message && (error.message.includes('JWT') || error.message.includes('auth'))) {
+                    console.log('Stopping auto-sync due to auth error');
+                    clearInterval(autoSyncInterval);
+                    autoSyncInterval = null;
+                }
             }
         }
-    }, 30000); // 30 seconds
+    }, 120000); // 2 minutes instead of 30 seconds
 }
 
 function showSyncIndicator(type, message, isAutoSync = false) {
@@ -1882,4 +2197,213 @@ function performExport(format) {
     } catch (error) {
         handleError(error, 'Export');
     }
+}
+
+// Bulk Operations
+function toggleBulkMode() {
+    bulkMode = !bulkMode;
+    selectedContacts.clear();
+    
+    const bulkBtn = document.getElementById('bulkModeBtn');
+    const bulkBar = document.getElementById('bulkActionsBar');
+    
+    if (bulkMode) {
+        bulkBtn.classList.add('active');
+        bulkBtn.innerHTML = '<i class="fas fa-times"></i> Exit';
+        bulkBar.style.display = 'flex';
+        
+        // Re-render contacts to add bulk mode
+        renderContacts();
+    } else {
+        exitBulkMode();
+    }
+    
+    updateSelectedCount();
+}
+
+function exitBulkMode() {
+    bulkMode = false;
+    selectedContacts.clear();
+    
+    const bulkBtn = document.getElementById('bulkModeBtn');
+    const bulkBar = document.getElementById('bulkActionsBar');
+    
+    bulkBtn.classList.remove('active');
+    bulkBtn.innerHTML = '<i class="fas fa-check-square"></i> Select';
+    bulkBar.style.display = 'none';
+    
+    // Re-render contacts to remove bulk mode
+    renderContacts();
+    updateSelectedCount();
+}
+
+function handleContactSelection(event) {
+    if (!bulkMode) return;
+    
+    event.stopPropagation();
+    event.preventDefault();
+    
+    const card = event.currentTarget;
+    const contactId = card.dataset.contactId;
+    
+    if (selectedContacts.has(contactId)) {
+        selectedContacts.delete(contactId);
+        card.classList.remove('selected');
+    } else {
+        selectedContacts.add(contactId);
+        card.classList.add('selected');
+    }
+    
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const countEl = document.getElementById('selectedCount');
+    const selectAllBtn = document.getElementById('selectAllBtn');
+    
+    if (countEl) {
+        countEl.textContent = selectedContacts.size;
+    }
+    
+    // Update select all button
+    if (selectAllBtn && bulkMode) {
+        const visibleContacts = document.querySelectorAll('.contact-card:not([style*="display: none"])');
+        const allSelected = visibleContacts.length > 0 && selectedContacts.size === visibleContacts.length;
+        
+        selectAllBtn.innerHTML = allSelected 
+            ? '<i class="fas fa-square"></i> Deselect All'
+            : '<i class="fas fa-check-double"></i> Select All';
+    }
+    
+    // Enable/disable bulk action buttons
+    const hasSelection = selectedContacts.size > 0;
+    document.querySelectorAll('.bulk-actions .btn-secondary, .bulk-actions .btn-danger').forEach(btn => {
+        if (btn.id !== 'selectAllBtn' && !btn.textContent.includes('Cancel')) {
+            btn.disabled = !hasSelection;
+            btn.style.opacity = hasSelection ? '1' : '0.5';
+        }
+    });
+}
+
+function selectAll() {
+    const visibleContacts = document.querySelectorAll('.contact-card:not([style*="display: none"])');
+    const allSelected = selectedContacts.size === visibleContacts.length && visibleContacts.length > 0;
+    
+    if (allSelected) {
+        // Deselect all
+        selectedContacts.clear();
+        visibleContacts.forEach(card => card.classList.remove('selected'));
+    } else {
+        // Select all visible
+        selectedContacts.clear();
+        visibleContacts.forEach(card => {
+            const contactId = card.dataset.contactId;
+            if (contactId) {
+                selectedContacts.add(contactId);
+                card.classList.add('selected');
+            }
+        });
+    }
+    
+    updateSelectedCount();
+}
+
+async function bulkDelete() {
+    if (selectedContacts.size === 0) return;
+    
+    const confirmed = confirm(`Are you sure you want to delete ${selectedContacts.size} contact${selectedContacts.size > 1 ? 's' : ''}? This action cannot be undone.`);
+    if (!confirmed) return;
+    
+    const deleteBtn = document.querySelector('.bulk-actions .btn-danger');
+    showButtonLoading(deleteBtn, 'Deleting...');
+    
+    try {
+        const contactIds = Array.from(selectedContacts);
+        let deletedCount = 0;
+        
+        for (const contactId of contactIds) {
+            try {
+                if (window.currentUser && window.currentOrganization) {
+                    // Delete from Supabase
+                    const { error } = await supabase
+                        .from('contacts')
+                        .delete()
+                        .eq('id', contactId);
+                    
+                    if (error) throw error;
+                }
+                
+                // Remove from local array
+                contacts = contacts.filter(c => c.id.toString() !== contactId);
+                deletedCount++;
+                
+            } catch (error) {
+                console.error(`Failed to delete contact ${contactId}:`, error);
+            }
+        }
+        
+        // Save to localStorage
+        saveContactsLocal();
+        
+        // Update UI
+        filterContacts();
+        updateStats();
+        exitBulkMode();
+        
+        showToast(`${deletedCount} contact${deletedCount > 1 ? 's' : ''} deleted successfully`, 'success');
+        
+    } catch (error) {
+        console.error('Bulk delete error:', error);
+        showToast('Error deleting contacts: ' + error.message, 'error');
+    } finally {
+        hideButtonLoading(deleteBtn, '<i class="fas fa-trash"></i> Delete');
+    }
+}
+
+function bulkExport() {
+    if (selectedContacts.size === 0) return;
+    
+    const selectedContactsData = contacts.filter(contact => 
+        selectedContacts.has(contact.id.toString())
+    );
+    
+    // Use the existing export function with selected data
+    try {
+        const headers = ['Plant Name', 'Location', 'Contact', 'Phone', 'Status', 'Next Contact', 'Notes'];
+        const rows = selectedContactsData.map(contact => [
+            contact.plantName,
+            contact.location || '',
+            contact.contactName || '',
+            contact.phoneNumber || '',
+            formatStatus(contact.status),
+            contact.nextContact || '',
+            contact.notes || ''
+        ]);
+        
+        const data = [headers, ...rows].map(row => 
+            row.map(field => `"${(field || '').toString().replace(/"/g, '""')}"`).join(',')
+        ).join('\n');
+        
+        const filename = `gemini-contacts-selected-${new Date().toISOString().split('T')[0]}.csv`;
+        const blob = new Blob([data], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+        
+        showToast(`Exported ${selectedContacts.size} selected contacts`, 'success');
+        
+    } catch (error) {
+        console.error('Export error:', error);
+        showToast('Error exporting contacts', 'error');
+    }
+}
+
+function bulkEdit() {
+    if (selectedContacts.size === 0) return;
+    
+    // For now, show a message that this feature is coming
+    showToast('Bulk edit feature coming soon! Export selected contacts to edit in spreadsheet.', 'info', 4000);
 }

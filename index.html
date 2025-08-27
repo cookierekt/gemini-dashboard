@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gemini Global Dashboard</title>
+    <title>Gemini Global Dashboard - Contact Management</title>
     <link rel="stylesheet" href="styles.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
@@ -76,7 +76,10 @@
     <div class="dashboard" id="mainDashboard" style="display: none;">
         <header class="header">
             <div class="header-content">
-                <h1><i class="fas fa-industry"></i> Gemini Global Dashboard</h1>
+                <h1>
+                    <i class="fas fa-industry"></i> 
+                    <a href="https://www.geminiglobal.co" target="_blank" class="company-link">Gemini Global</a> Dashboard
+                </h1>
                 <div class="header-stats">
                     <div class="stat-card">
                         <span class="stat-number" id="totalContacts">0</span>
@@ -152,12 +155,39 @@
                 </div>
                 
                 <div class="action-buttons">
+                    <button class="btn-secondary" onclick="toggleBulkMode()" id="bulkModeBtn" title="Select multiple contacts">
+                        <i class="fas fa-check-square"></i> Select
+                    </button>
                     <button class="btn-sync" onclick="syncData()" id="syncBtn" title="Sync with cloud">
                         <i class="fas fa-sync-alt" id="syncIcon"></i> Sync
                     </button>
                     <button class="btn-primary" onclick="openAddContactModal()">
                         <i class="fas fa-plus"></i> Add Contact
                     </button>
+                </div>
+                
+                <!-- Bulk Actions Bar -->
+                <div class="bulk-actions-bar" id="bulkActionsBar" style="display: none;">
+                    <div class="bulk-info">
+                        <span id="selectedCount">0</span> contacts selected
+                    </div>
+                    <div class="bulk-actions">
+                        <button class="btn-secondary" onclick="selectAll()" id="selectAllBtn">
+                            <i class="fas fa-check-double"></i> Select All
+                        </button>
+                        <button class="btn-secondary" onclick="bulkExport()" title="Export selected contacts">
+                            <i class="fas fa-download"></i> Export
+                        </button>
+                        <button class="btn-secondary" onclick="bulkEdit()" title="Edit selected contacts">
+                            <i class="fas fa-edit"></i> Edit
+                        </button>
+                        <button class="btn-danger" onclick="bulkDelete()" title="Delete selected contacts">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                        <button class="btn-secondary" onclick="exitBulkMode()" title="Exit selection mode">
+                            <i class="fas fa-times"></i> Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -254,23 +284,35 @@
     <div class="keyboard-shortcuts" id="keyboardShortcuts">
         <div class="shortcut-item">
             <span>Search</span>
-            <span class="shortcut-key">Ctrl+K</span>
+            <span class="shortcut-key">Ctrl+K or /</span>
         </div>
         <div class="shortcut-item">
             <span>New Contact</span>
             <span class="shortcut-key">Ctrl+N</span>
         </div>
         <div class="shortcut-item">
-            <span>Sync Data</span>
-            <span class="shortcut-key">Ctrl+R</span>
+            <span>Navigate</span>
+            <span class="shortcut-key">Arrow Keys</span>
         </div>
         <div class="shortcut-item">
-            <span>Card View</span>
-            <span class="shortcut-key">1</span>
+            <span>Select Mode</span>
+            <span class="shortcut-key">Shift+S</span>
         </div>
         <div class="shortcut-item">
-            <span>List View</span>
-            <span class="shortcut-key">2</span>
+            <span>Select All</span>
+            <span class="shortcut-key">Ctrl+A</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Delete</span>
+            <span class="shortcut-key">Del</span>
+        </div>
+        <div class="shortcut-item">
+            <span>View Toggle</span>
+            <span class="shortcut-key">1-2</span>
+        </div>
+        <div class="shortcut-item">
+            <span>Help</span>
+            <span class="shortcut-key">H</span>
         </div>
     </div>
     

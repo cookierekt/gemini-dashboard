@@ -47,11 +47,18 @@ async function initializeAuth() {
         
         // Listen for auth changes
         supabase.auth.onAuthStateChange(async (event, session) => {
+            console.log('Auth state change:', event);
+            
             if (event === 'SIGNED_IN' && session) {
                 await handleAuthSuccess(session.user);
             } else if (event === 'SIGNED_OUT') {
-                handleSignOut();
+                // Only handle sign out if it's not already handled
+                if (window.currentUser) {
+                    console.log('Handling sign out event');
+                    handleSignOut();
+                }
             }
+            // Ignore TOKEN_REFRESHED and other events that don't require action
         });
         
     } catch (error) {
@@ -454,26 +461,34 @@ function handleActivityNotification(activity) {
 function monitorConnectionStatus() {
     const statusEl = document.getElementById('connectionStatus');
     
-    // Check connection periodically
+    // Check connection periodically, but less frequently
     setInterval(async () => {
-        try {
-            const { error } = await supabase
-                .from('contacts')
-                .select('id')
-                .limit(1);
-            
-            if (error) throw error;
-            
-            // Online
-            statusEl.innerHTML = '<i class="fas fa-wifi"></i> <span>Online</span>';
-            statusEl.className = 'connection-status online';
-            
-        } catch (error) {
-            // Offline
-            statusEl.innerHTML = '<i class="fas fa-wifi-slash"></i> <span>Offline</span>';
-            statusEl.className = 'connection-status offline';
+        // Only check if page is visible to avoid unnecessary requests
+        if (document.visibilityState === 'visible') {
+            try {
+                const { error } = await supabase
+                    .from('contacts')
+                    .select('id')
+                    .limit(1);
+                
+                if (error) throw error;
+                
+                // Online
+                statusEl.innerHTML = '<i class="fas fa-wifi"></i> <span>Online</span>';
+                statusEl.className = 'connection-status online';
+                
+            } catch (error) {
+                // Only log non-auth errors to avoid spam
+                if (!error.message || (!error.message.includes('JWT') && !error.message.includes('auth'))) {
+                    console.log('Connection check failed:', error);
+                }
+                
+                // Offline
+                statusEl.innerHTML = '<i class="fas fa-wifi-slash"></i> <span>Offline</span>';
+                statusEl.className = 'connection-status offline';
+            }
         }
-    }, 10000); // Check every 10 seconds
+    }, 30000); // Check every 30 seconds instead of 10
 }
 
 // Sharing and team management functions
