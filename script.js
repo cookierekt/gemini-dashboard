@@ -215,7 +215,7 @@ async function saveContactToSupabase(contactData, isUpdate = false, contactId = 
             recent_contact: contactData.recentContact,
             next_contact: contactData.nextContact,
             frequency: contactData.frequency,
-            call_time: contactData.callTime,
+            call_time: contactData.callTime || null,
             notes: contactData.notes,
             status: contactData.status || 'inactive',
             organization_id: window.currentOrganization.id,

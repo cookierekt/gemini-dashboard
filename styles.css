@@ -179,9 +179,9 @@ body.light-theme .modal-content {
 body.light-theme .form-group input,
 body.light-theme .form-group select,
 body.light-theme .form-group textarea {
-    background: rgba(249, 250, 251, 0.8);
-    border: 2px solid rgba(0, 0, 0, 0.1);
-    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.95) !important;
+    border: 2px solid rgba(0, 0, 0, 0.2) !important;
+    color: white !important;
 }
 
 body.light-theme .form-group input:focus,

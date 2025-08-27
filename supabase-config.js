@@ -74,12 +74,19 @@ async function handleAuthSuccess(user) {
         // Get or create user profile
         await ensureUserProfile(user);
         
-        // Set default organization (skip organization tables for now)
-        window.currentOrganization = {
-            id: 'default-org',
-            name: 'Gemini Global',
-            created_by: user.id
-        };
+        // Load user's organization
+        try {
+            await loadUserOrganization();
+        } catch (error) {
+            console.error('Organization load failed, using default:', error);
+            // Fallback to default organization
+            const defaultOrg = await getOrCreateDefaultOrg();
+            window.currentOrganization = {
+                id: defaultOrg.id,
+                name: defaultOrg.name,
+                created_by: user.id
+            };
+        }
         
         // Hide auth modal, show main dashboard
         document.getElementById('authModal').style.display = 'none';
@@ -587,6 +594,42 @@ async function loadTeamMembers() {
     } catch (error) {
         console.error('Load team members error:', error);
     }
+}
+
+async function getOrCreateDefaultOrg() {
+    // Check if default organization exists
+    const { data: existingOrg, error: checkError } = await supabase
+        .from('organizations')
+        .select('id, name')
+        .eq('created_by', window.currentUser.id)
+        .single();
+    
+    if (!checkError && existingOrg) {
+        return existingOrg;
+    }
+    
+    // Create default organization
+    const { data: newOrg, error: createError } = await supabase
+        .from('organizations')
+        .insert({
+            name: 'My Organization',
+            created_by: window.currentUser.id
+        })
+        .select()
+        .single();
+    
+    if (createError) throw createError;
+    
+    // Add user as owner
+    await supabase
+        .from('organization_members')
+        .insert({
+            organization_id: newOrg.id,
+            user_id: window.currentUser.id,
+            role: 'owner'
+        });
+    
+    return newOrg;
 }
 
 async function loadActivityLog() {
